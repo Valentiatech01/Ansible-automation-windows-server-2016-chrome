@@ -1,7 +1,7 @@
 ---
 - name: Dynamically uninstall Google Chrome from Windows
   hosts: windows
-  gather_facts: no
+  gather_facts: yes   # ← Changed to 'yes'
 
   tasks:
     - name: Search registry for Chrome uninstall key
