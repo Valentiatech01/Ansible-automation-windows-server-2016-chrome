@@ -8,6 +8,10 @@
         product_id: "Google Chrome"
         state: absent
       register: uninstall_result
+      failed_when: 
+        - uninstall_result.rc not in [0, 19]
+      changed_when: 
+        - uninstall_result.rc in [0, 19]
 
     - name: Display uninstall result
       ansible.builtin.debug:
