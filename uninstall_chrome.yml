@@ -1,0 +1,14 @@
+---
+- name: Uninstall Google Chrome from Windows
+  hosts: windows
+  gather_facts: yes
+  tasks:
+    - name: Uninstall Google Chrome using product ID
+      ansible.windows.win_package:
+        product_id: "Google Chrome"
+        state: absent
+      register: uninstall_result
+
+    - name: Display uninstall result
+      ansible.builtin.debug:
+        msg: "Chrome uninstall completed with status: {{ uninstall_result }}"
