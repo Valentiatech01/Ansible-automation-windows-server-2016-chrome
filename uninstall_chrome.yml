@@ -1,32 +1,29 @@
 ---
-- name: Dynamically uninstall Google Chrome
+- name: Dynamically uninstall Google Chrome from Windows
   hosts: windows
   gather_facts: no
 
   tasks:
     - name: Search registry for Chrome uninstall key
       ansible.windows.win_shell: |
-        # Search both system-wide and per-user registry hives
         $regPaths = @(
           "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
           "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
           "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
         )
+
         $chromeKey = Get-ItemProperty $regPaths -ErrorAction SilentlyContinue |
                      Where-Object { $_.DisplayName -like "*Google Chrome*" } |
                      Select-Object -First 1
 
         if ($chromeKey) {
-          # Determine if it's an MSI or non-MSI install
           $uninstallString = $chromeKey.UninstallString
           $isMsi = $uninstallString -like "msiexec*"
 
-          # Extract the product ID or the uninstall command
           if ($isMsi) {
             $productId = ($uninstallString -split ' ' | Where-Object { $_ -like '{*}' })
             Write-Output "MSI|$productId"
           } else {
-            # For non-MSI, we need the full uninstall command
             Write-Output "EXE|$uninstallString"
           }
         } else {
@@ -47,9 +44,12 @@
 
     - name: Uninstall Chrome (Non-MSI Install)
       ansible.windows.win_shell: |
-        # Extract the exe and arguments correctly
         $uninstallString = "{{ chrome_info.stdout.split('|')[1] }}"
         $exe, $args = $uninstallString -split '"', 3 | Select-Object -Skip 1
         Start-Process -FilePath $exe -ArgumentList "$args --force-uninstall" -Wait
       when: "'EXE' in chrome_info.stdout"
       failed_when: false
+
+    - name: Display uninstall result
+      ansible.builtin.debug:
+        msg: "Chrome uninstall completed on {{ ansible_hostname }}"
