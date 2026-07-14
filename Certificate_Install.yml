@@ -4,12 +4,13 @@
   gather_facts: false
 
   vars:
+  pfx_url: "http://192.168.0.242/PASSWORD_certificate.pfx"
     pfx_password: "tHtx2JkO8TtlX6Li"
 
   tasks:
-    - name: Copy PFX file
-      ansible.windows.win_copy:
-        src: "\\192.168.0.209\\Downloads\\PASSWORD_certificate.pfx"
+    - name: Download PFX file
+      ansible.windows.win_get_url:
+        url: "{{ pfx_url }}"
         dest: "C:\\Temp\\webserver.pfx"
 
     - name: Import PFX certificate
