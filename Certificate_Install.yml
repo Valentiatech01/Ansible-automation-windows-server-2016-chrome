@@ -4,7 +4,7 @@
   gather_facts: false
 
   vars:
-  pfx_url: "http://192.168.0.242/PASSWORD_certificate.pfx"
+    pfx_url: "http://192.168.0.242/PASSWORD_certificate.pfx"
     pfx_password: "tHtx2JkO8TtlX6Li"
 
   tasks:
