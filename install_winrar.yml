@@ -1,0 +1,33 @@
+---
+- name: Install or Update WinRAR on Windows
+  hosts: windows
+  gather_facts: yes
+
+  tasks:
+    - name: Ensure C:\Temp directory exists
+      ansible.windows.win_file:
+        path: C:\Temp
+        state: directory
+
+    - name: Download WinRAR MSI installer
+      ansible.windows.win_get_url:
+        url: https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-701.exe
+        dest: C:\Temp\winrar-x64-701.exe
+        timeout: 30
+
+    - name: Install WinRAR silently
+      ansible.windows.win_package:
+        path: C:\Temp\winrar-x64-701.exe
+        arguments: /S   # Silent installation for WinRAR EXE
+        product_id: "WinRAR archiver"   # Used for idempotency check
+        state: present
+      register: winrar_install
+
+    - name: Clean up installer
+      ansible.windows.win_file:
+        path: C:\Temp\winrar-x64-701.exe
+        state: absent
+
+    - name: Display installation result
+      ansible.builtin.debug:
+        msg: "WinRAR installation completed with status: {{ winrar_install }}"
