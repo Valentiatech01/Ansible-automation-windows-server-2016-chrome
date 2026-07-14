@@ -1,7 +1,7 @@
-  ---
+---
 - name: Install PFX Certificate
   hosts: windows
-  gather_facts: no
+  gather_facts: false
 
   vars:
     pfx_password: "tHtx2JkO8TtlX6Li"
@@ -9,18 +9,19 @@
   tasks:
     - name: Copy PFX file
       ansible.windows.win_copy:
-        src: \\192.168.0.209\Downloads\PASSWORD_certificate.pfx
-        dest: C:\Temp\webserver.pfx
+        src: "\\\\192.168.0.209\\Downloads\\PASSWORD_certificate.pfx"
+        dest: "C:\\Temp\\webserver.pfx"
 
     - name: Import PFX certificate
       ansible.windows.win_certificate_store:
-        path: C:\Temp\webserver.pfx
+        path: "C:\\Temp\\webserver.pfx"
         file_type: pkcs12
         password: "{{ pfx_password }}"
         state: present
         store_location: LocalMachine
         store_name: My
+
     - name: Delete PFX file after import
       ansible.windows.win_file:
-        path: C:\Temp\webserver.pfx
+        path: "C:\\Temp\\webserver.pfx"
         state: absent
