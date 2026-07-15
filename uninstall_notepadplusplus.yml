@@ -1,5 +1,5 @@
 ---
-- name: Uninstall Notepad++ with force removal
+- name: Force uninstall Notepad++ using multiple methods
   hosts: windows
   gather_facts: yes
 
@@ -10,54 +10,79 @@
       ignore_errors: yes
       changed_when: false
 
-    - name: Search registry for Notepad++ uninstall key
-      ansible.windows.win_shell: |
-        $regPaths = @(
-          "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-          "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-        )
-        $nppKey = Get-ItemProperty $regPaths -ErrorAction SilentlyContinue |
-                  Where-Object { $_.DisplayName -like "*Notepad++*" } |
-                  Select-Object -First 1
-        if ($nppKey) {
-          Write-Output $nppKey.PSChildName
-        }
-      register: npp_product_id
-      failed_when: npp_product_id.stdout == ""
-
-    - name: Uninstall Notepad++ using discovered product ID
-      ansible.windows.win_package:
-        product_id: "{{ npp_product_id.stdout }}"
-        state: absent
-      register: uninstall_result
-      failed_when: false
-      ignore_errors: yes
-
-    - name: Force uninstall using uninstaller path (if exists)
+    - name: Get Notepad++ uninstaller path
       ansible.windows.win_shell: |
         $uninstaller = Get-ChildItem -Path "C:\Program Files\Notepad++" -Filter "uninstall.exe" -Recurse -ErrorAction SilentlyContinue |
                        Select-Object -First 1
         if ($uninstaller) {
-          & $uninstaller.FullName /S --force
+          Write-Output $uninstaller.FullName
         }
-      register: force_uninstall
+      register: uninstaller_path
       ignore_errors: yes
-      failed_when: false
 
-    - name: Delete Notepad++ installation folder if still exists
+    - name: Method 1 - Uninstall with /S flag
+      ansible.windows.win_shell: '"{{ uninstaller_path.stdout }}" /S'
+      when: uninstaller_path.stdout != ""
+      ignore_errors: yes
+      register: uninstall_result1
+
+    - name: Method 2 - Uninstall with /S and --force
+      ansible.windows.win_shell: '"{{ uninstaller_path.stdout }}" /S --force'
+      when: uninstaller_path.stdout != ""
+      ignore_errors: yes
+      register: uninstall_result2
+
+    - name: Method 3 - Delete Notepad++ folder (if still exists)
       ansible.windows.win_file:
         path: C:\Program Files\Notepad++
         state: absent
       ignore_errors: yes
 
-    - name: Restart Windows Explorer
+    - name: Method 4 - Delete Notepad++ data in ProgramData
+      ansible.windows.win_file:
+        path: C:\ProgramData\Notepad++
+        state: absent
+      ignore_errors: yes
+
+    - name: Method 5 - Delete Notepad++ from AppData (Per-user install)
+      ansible.windows.win_shell: |
+        $appDataPaths = @(
+          "$env:APPDATA\Notepad++",
+          "$env:LOCALAPPDATA\Notepad++",
+          "$env:PROGRAMDATA\Notepad++"
+        )
+        foreach ($path in $appDataPaths) {
+          if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+          }
+        }
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Method 6 - Remove registry entries
+      ansible.windows.win_shell: |
+        $regPaths = @(
+          "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+          "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        Get-ItemProperty $regPaths -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -like "*Notepad++*" } |
+        ForEach-Object {
+          $keyPath = $_.PSPath
+          Remove-Item -Path $keyPath -Force -ErrorAction SilentlyContinue
+        }
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Restart Windows Explorer to complete cleanup
       ansible.windows.win_shell: |
         Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
       changed_when: false
       ignore_errors: yes
 
-    - name: Display uninstall result
+    - name: Display uninstall results
       ansible.builtin.debug:
         msg: 
-          - "Uninstall RC: {{ uninstall_result.rc | default('N/A') }}"
-          - "Force uninstall output: {{ force_uninstall.stdout | default('N/A') }}"
+          - "Uninstall result (Method 1): {{ uninstall_result1.rc | default('N/A') }}"
+          - "Uninstall result (Method 2): {{ uninstall_result2.rc | default('N/A') }}"
+          - "Uninstaller path: {{ uninstaller_path.stdout | default('Not found') }}"
