@@ -10,48 +10,43 @@
       ignore_errors: yes
       changed_when: false
 
-    - name: Get Notepad++ uninstaller path
+    - name: Method 1 - Uninstall using QuietUninstallString
       ansible.windows.win_shell: |
-        $uninstaller = Get-ChildItem -Path "C:\Program Files\Notepad++" -Filter "uninstall.exe" -Recurse -ErrorAction SilentlyContinue |
-                       Select-Object -First 1
-        if ($uninstaller) {
-          Write-Output $uninstaller.FullName
+        $uninstallString = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" -ErrorAction SilentlyContinue).QuietUninstallString
+        if ($uninstallString) {
+          Start-Process -FilePath "cmd.exe" -ArgumentList "/c $uninstallString" -Wait -NoNewWindow
         }
-      register: uninstaller_path
-      ignore_errors: yes
-
-    - name: Method 1 - Uninstall with /S flag
-      ansible.windows.win_shell: '"{{ uninstaller_path.stdout }}" /S'
-      when: uninstaller_path.stdout != ""
-      ignore_errors: yes
       register: uninstall_result1
-
-    - name: Method 2 - Uninstall with /S and --force
-      ansible.windows.win_shell: '"{{ uninstaller_path.stdout }}" /S --force'
-      when: uninstaller_path.stdout != ""
       ignore_errors: yes
-      register: uninstall_result2
 
-    - name: Method 3 - Delete Notepad++ folder (if still exists)
+    - name: Method 2 - Uninstall using MSIEXEC (if it's an MSI)
+      ansible.windows.win_shell: |
+        $productCode = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" -ErrorAction SilentlyContinue).PSChildName
+        if ($productCode -match '{.*}') {
+          Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -NoNewWindow
+        }
+      register: uninstall_result2
+      ignore_errors: yes
+
+    - name: Method 3 - Delete Notepad++ folder
       ansible.windows.win_file:
         path: C:\Program Files\Notepad++
         state: absent
       ignore_errors: yes
 
-    - name: Method 4 - Delete Notepad++ data in ProgramData
+    - name: Method 4 - Delete Notepad++ ProgramData folder
       ansible.windows.win_file:
         path: C:\ProgramData\Notepad++
         state: absent
       ignore_errors: yes
 
-    - name: Method 5 - Delete Notepad++ from AppData (Per-user install)
+    - name: Method 5 - Delete AppData folders
       ansible.windows.win_shell: |
-        $appDataPaths = @(
+        $paths = @(
           "$env:APPDATA\Notepad++",
-          "$env:LOCALAPPDATA\Notepad++",
-          "$env:PROGRAMDATA\Notepad++"
+          "$env:LOCALAPPDATA\Notepad++"
         )
-        foreach ($path in $appDataPaths) {
+        foreach ($path in $paths) {
           if (Test-Path $path) {
             Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
           }
@@ -59,22 +54,20 @@
       ignore_errors: yes
       changed_when: false
 
-    - name: Method 6 - Remove registry entries
+    - name: Method 6 - Remove registry entry
       ansible.windows.win_shell: |
-        $regPaths = @(
-          "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-          "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-        )
-        Get-ItemProperty $regPaths -ErrorAction SilentlyContinue |
-        Where-Object { $_.DisplayName -like "*Notepad++*" } |
-        ForEach-Object {
-          $keyPath = $_.PSPath
-          Remove-Item -Path $keyPath -Force -ErrorAction SilentlyContinue
-        }
+        Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Notepad++" -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path "HKCU:\SOFTWARE\Notepad++" -Recurse -Force -ErrorAction SilentlyContinue
       ignore_errors: yes
       changed_when: false
 
-    - name: Restart Windows Explorer to complete cleanup
+    - name: Method 7 - Uninstall using wmic
+      ansible.windows.win_shell: |
+        wmic product where "name like '%Notepad++%'" call uninstall /nointeractive
+      ignore_errors: yes
+      register: uninstall_result3
+
+    - name: Restart Windows Explorer
       ansible.windows.win_shell: |
         Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
       changed_when: false
@@ -83,6 +76,6 @@
     - name: Display uninstall results
       ansible.builtin.debug:
         msg: 
-          - "Uninstall result (Method 1): {{ uninstall_result1.rc | default('N/A') }}"
-          - "Uninstall result (Method 2): {{ uninstall_result2.rc | default('N/A') }}"
-          - "Uninstaller path: {{ uninstaller_path.stdout | default('Not found') }}"
+          - "Method 1 (QuietUninstallString): {{ uninstall_result1.rc | default('N/A') }}"
+          - "Method 2 (MSIEXEC): {{ uninstall_result2.rc | default('N/A') }}"
+          - "Method 7 (WMIC): {{ uninstall_result3.rc | default('N/A') }}"
