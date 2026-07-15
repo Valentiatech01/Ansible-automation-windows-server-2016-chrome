@@ -1,9 +1,15 @@
 ---
-- name: Uninstall Notepad++ using dynamic registry search
+- name: Uninstall Notepad++ with force removal
   hosts: windows
   gather_facts: yes
 
   tasks:
+    - name: Kill any running Notepad++ processes
+      ansible.windows.win_shell: |
+        Get-Process -Name "notepad++" -ErrorAction SilentlyContinue | Stop-Process -Force
+      ignore_errors: yes
+      changed_when: false
+
     - name: Search registry for Notepad++ uninstall key
       ansible.windows.win_shell: |
         $regPaths = @(
@@ -24,10 +30,27 @@
         product_id: "{{ npp_product_id.stdout }}"
         state: absent
       register: uninstall_result
-      failed_when: uninstall_result.rc not in [0, 19, 1605, 1614, 3010]
-      changed_when: uninstall_result.rc in [0, 19, 3010]
+      failed_when: false
+      ignore_errors: yes
 
-    - name: Restart Windows Explorer to complete cleanup
+    - name: Force uninstall using uninstaller path (if exists)
+      ansible.windows.win_shell: |
+        $uninstaller = Get-ChildItem -Path "C:\Program Files\Notepad++" -Filter "uninstall.exe" -Recurse -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+        if ($uninstaller) {
+          & $uninstaller.FullName /S --force
+        }
+      register: force_uninstall
+      ignore_errors: yes
+      failed_when: false
+
+    - name: Delete Notepad++ installation folder if still exists
+      ansible.windows.win_file:
+        path: C:\Program Files\Notepad++
+        state: absent
+      ignore_errors: yes
+
+    - name: Restart Windows Explorer
       ansible.windows.win_shell: |
         Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
       changed_when: false
@@ -35,4 +58,6 @@
 
     - name: Display uninstall result
       ansible.builtin.debug:
-        msg: "Notepad++ uninstall completed with RC: {{ uninstall_result.rc }}"
+        msg: 
+          - "Uninstall RC: {{ uninstall_result.rc | default('N/A') }}"
+          - "Force uninstall output: {{ force_uninstall.stdout | default('N/A') }}"
