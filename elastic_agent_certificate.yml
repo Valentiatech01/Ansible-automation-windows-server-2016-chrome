@@ -1,0 +1,90 @@
+---
+- name: Download certificate and restart Elastic Agent
+  hosts: windows
+  gather_facts: yes
+
+  tasks:
+    # ============================================
+    # Option 1: Overwrite with force: yes (Recommended)
+    # ============================================
+    - name: Ensure C:\Temp directory exists
+      ansible.windows.win_file:
+        path: C:\Temp
+        state: directory
+
+    - name: Download certificate (overwrites if exists)
+      ansible.windows.win_get_url:
+        url: http://192.168.0.242/Certificate.pfx
+        dest: C:\Temp\certificate.crt
+        force: yes
+        timeout: 30
+      register: download_result
+
+    # ============================================
+    # Option 2: Delete old file first then download
+    # ============================================
+    - name: Check if old certificate exists
+      ansible.windows.win_stat:
+        path: C:\Temp\certificate.crt
+      register: old_cert
+
+    - name: Delete old certificate (if exists)
+      ansible.windows.win_file:
+        path: C:\Temp\certificate.crt
+        state: absent
+      when: old_cert.stat.exists
+
+    - name: Download new certificate
+      ansible.windows.win_get_url:
+        url: http://192.168.0.242/Certificate.pfx
+        dest: C:\Temp\certificate.crt
+        force: yes
+        timeout: 30
+      when: old_cert.stat.exists
+
+    # ============================================
+    # Option 3: Check and only download if different
+    # ============================================
+    - name: Get current file checksum (if exists)
+      ansible.windows.win_stat:
+        path: C:\Temp\certificate.crt
+        checksum_algorithm: sha256
+      register: current_cert
+      ignore_errors: yes
+
+    - name: Download certificate only if missing or different
+      ansible.windows.win_get_url:
+        url: http://192.168.0.242/Certificate.pfx
+        dest: C:\Temp\certificate.crt
+        force: yes
+        timeout: 30
+      when: not current_cert.stat.exists
+
+    # ============================================
+    # Verification
+    # ============================================
+    - name: Verify certificate file exists
+      ansible.windows.win_stat:
+        path: C:\Temp\certificate.crt
+      register: cert_stat
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: 
+          - "Certificate on {{ ansible_hostname }}:"
+          - "  Exists: {{ cert_stat.stat.exists }}"
+          - "  Size: {{ cert_stat.stat.size }} bytes"
+
+    # ============================================
+    # Restart Elastic Agent
+    # ============================================
+    - name: Restart Elastic Agent service
+      ansible.windows.win_service:
+        name: "Elastic Agent"
+        state: restarted
+      register: restart_result
+      ignore_errors: yes
+
+    - name: Display restart result
+      ansible.builtin.debug:
+        msg: "Elastic Agent restarted on {{ ansible_hostname }}"
